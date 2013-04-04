@@ -69,6 +69,15 @@ task :publish => [:generate] do
   }
 end
 
+desc 'Push live'
+task :live do
+  `git stash`
+  `git checkout master`
+  `git push`
+  `git checkout source`
+  `git stash pop`
+end
+
 desc 'Start development'
 task :development do
   puts 'Starting stasis watcher and server, visit http://localhost:3000 to view'
