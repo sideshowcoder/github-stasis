@@ -20,44 +20,37 @@ desc 'Setup the repository for Github user or organization page run this in an e
 task :setup_repository_for_github_user_page do
   `git init`
   `git checkout -b source`
-  `echo 'the source lives here in this branch' > README`
+  write_default_files
+  `bundle install`
   `git add -A`
   `git commit -m'setup source branch'`
   `git checkout --orphan master`
   rm_rf FileList['*']
-  `echo '<h1>the content lives here in this branch</h1>' > index.html`
+  `touch index.html`
   `git add -A`
   `git commit -m'setup content branch'`
   `git checkout source`
+  Rake::Task[:publish].invoke
   puts <<-INFO
-
-  Repository setup locally now create a repository named USERNAME.github.com
-  and point the origin it's way.
-
-  The rest of the Rakefile assumes a stasis default setup to be used so
-
-  rake development
-  runs a local development server on port 3000, watching the current dir
-
-  rake generate
-  generates the current page inside public
-
-  rake publish
-  publishes whatever is currently generated to the master branch ready to push
-
-  Have a great day!
-  @sideshowcoder <Twitter @ischi>
+Repository setup locally now create a repository named USERNAME.github.com
+and point the origin it's way. For more information check the README
   INFO
 end
 
 desc 'Generate page'
 task :generate do
-  `bundle exec stasis`
+  generate
 end
 
-desc 'Remove generated files'
+desc 'Remove generated files from public'
 task :clean do
   rm_rf 'public'
+end
+
+desc 'Remove generated files including the stasis base layout'
+task :deep_clean do
+  rm_rf 'public'
+  rm FileList['controller.rb', 'Gemfile', 'index.html.erb']
 end
 
 desc 'Publish updated page'
@@ -71,7 +64,6 @@ task :publish => [:generate] do
     mv FileList["#{dir}/*"], '.'
     `git add -A`
     `git commit -m 'published from #{current_commit}'`
-    `git push origin master`
     `git checkout source`
     `git stash pop`
   }
@@ -92,3 +84,101 @@ end
 
 task :default => :development
 
+# write some default files to have a valid stasis setup
+def write_default_files
+  templates = load_templates
+  File.open('controller.rb', 'w') { |f| f.write(templates[:controller]) }
+  File.open('README.md', 'w') { |f| f.write(templates[:readme]) }
+  File.open('index.html.erb', 'w') { |f| f.write(templates[:index]) }
+  File.open('Gemfile', 'w') { |f| f.write(templates[:gemfile]) }
+end
+
+# generate the public files to serve
+def generate
+  `bundle exec stasis`
+end
+
+# Load embedded templates from the file
+# added from Sinatra
+def load_templates
+  templates = {}
+  file = __FILE__
+
+  begin
+    io = ::IO.respond_to?(:binread) ? ::IO.binread(file) : ::IO.read(file)
+    app, data = io.gsub("\r\n", "\n").split(/^__END__$/, 2)
+  rescue Errno::ENOENT
+    app, data = nil
+  end
+
+  if data
+    lines = app.count("\n") + 1
+    template = nil
+    data.each_line do |line|
+      lines += 1
+      if line =~ /^@@\s*(.*\S)\s*$/
+        template = ''
+        templates[$1.to_sym] = template
+      elsif template
+        template << line
+      end
+    end
+  end
+
+  templates
+end
+
+__END__
+
+@@ gemfile
+source "https://rubygems.org"
+
+gem "stasis"
+gem "redcarpet"
+
+@@ controller
+# ignore everything needed to build
+ignore 'Gemfile.lock'
+ignore 'Gemfile'
+ignore 'Rakefile'
+# ignore all the git stuff
+ignore '.gitignore'
+ignore '.ruby-version'
+ignore '.git'
+# we don't want to render the readme
+ignore 'README.md'
+
+@@ index
+<!DOCTYPE html>
+<html>
+<head>
+  <title>My Github user page</title>
+</head>
+<body>
+<div class="container">
+
+  <h1>My Github user page</h1>
+  <p>checkout <a href='http://stasis.me'>stasis<a> to know how to work with me. To publish just run</p>
+  <code>rake publish<code>
+
+</div>
+</body>
+</html>
+
+@@ readme
+Repository setup locally now create a repository named USERNAME.github.com
+and point the origin it's way.
+
+The rest of the Rakefile assumes a stasis default setup to be used so
+
+    rake development
+runs a local development server on port 3000, watching the current dir
+
+    rake generate
+generates the current page inside public
+
+    rake publish
+publishes whatever is currently generated to the master branch ready to push
+
+Have a great day!
+@sideshowcoder <Twitter @ischi>
